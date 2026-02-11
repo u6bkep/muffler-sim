@@ -223,13 +223,21 @@ impl AudioPipeline {
 
         // -- cpal device setup ------------------------------------------------
         let host = cpal::default_host();
-        let device = host
-            .default_output_device()
-            .expect("No default audio output device found");
+        let device = match host.default_output_device() {
+            Some(d) => d,
+            None => {
+                eprintln!("No default audio output device found; audio will not play");
+                return;
+            }
+        };
 
-        let supported_config = device
-            .default_output_config()
-            .expect("No default output config");
+        let supported_config = match device.default_output_config() {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("No default output config: {e}; audio will not play");
+                return;
+            }
+        };
         let sample_format = supported_config.sample_format();
         let config: cpal::StreamConfig = supported_config.into();
 
