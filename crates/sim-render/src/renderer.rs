@@ -208,7 +208,10 @@ impl Renderer {
                     self.recreate_swapchain = true;
                     return None;
                 }
-                Err(e) => panic!("failed to acquire next image: {e}"),
+                Err(e) => {
+                    eprintln!("failed to acquire next image: {e}; skipping frame");
+                    return None;
+                }
             };
         if suboptimal {
             self.recreate_swapchain = true;

@@ -103,27 +103,25 @@ impl ApplicationHandler for App {
 
 impl App {
     fn render_frame(&mut self) {
-        if self.renderer.is_none() || self.gui.is_none() {
-            return;
-        }
-
-        let acquire = self.renderer.as_mut().unwrap().begin_frame();
-        let (image_index, acquire_future) = match acquire {
+        let renderer = match self.renderer.as_mut() {
             Some(r) => r,
             None => return,
         };
 
-        let before_future = self
-            .renderer
-            .as_mut()
-            .unwrap()
-            .take_previous_frame_end()
-            .join(acquire_future);
+        let (image_index, acquire_future) = match renderer.begin_frame() {
+            Some(r) => r,
+            None => return,
+        };
+
+        let before_future = renderer.take_previous_frame_end().join(acquire_future);
 
         // Run the egui immediate-mode UI.
         let changed = Cell::new(false);
         {
-            let gui = self.gui.as_mut().unwrap();
+            let gui = match self.gui.as_mut() {
+                Some(g) => g,
+                None => return,
+            };
             let params = &mut self.params;
             let ui_state = &mut self.ui_state;
             let result = &self.result;
@@ -161,16 +159,22 @@ impl App {
         }
 
         // Draw egui onto the swapchain image.
-        let image_view =
-            self.renderer.as_ref().unwrap().image_views[image_index as usize].clone();
-        let after_future = self
-            .gui
-            .as_mut()
-            .unwrap()
-            .draw_on_image(before_future, image_view);
+        let renderer = match self.renderer.as_ref() {
+            Some(r) => r,
+            None => return,
+        };
+        let image_view = renderer.image_views[image_index as usize].clone();
+        let gui = match self.gui.as_mut() {
+            Some(g) => g,
+            None => return,
+        };
+        let after_future = gui.draw_on_image(before_future, image_view);
 
         // Present.
-        let renderer = self.renderer.as_mut().unwrap();
+        let renderer = match self.renderer.as_mut() {
+            Some(r) => r,
+            None => return,
+        };
         let final_future = renderer.present(after_future, image_index);
         renderer.end_frame(final_future);
     }

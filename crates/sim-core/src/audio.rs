@@ -50,7 +50,7 @@ impl ConvolutionEngine {
     /// The returned vector always has exactly `input.len()` samples; any
     /// excess (the "tail") is stored internally and added to the next block.
     pub fn process(&mut self, input: &[f64]) -> Vec<f64> {
-        let ir = self.impulse_response.lock().unwrap().clone();
+        let ir = self.impulse_response.lock().unwrap_or_else(|e| e.into_inner()).clone();
 
         // Handle degenerate cases
         if ir.is_empty() || input.is_empty() {
@@ -186,13 +186,18 @@ impl AudioPipeline {
     /// This is thread-safe and can be called from the simulation thread
     /// while audio is playing.
     pub fn swap_ir(&self, ir: Vec<f64>) {
-        let mut guard = self.ir_handle.lock().unwrap();
+        // Reject IR containing non-finite values (NaN, inf).
+        if !ir.iter().all(|v| v.is_finite()) {
+            eprintln!("swap_ir: rejected IR with non-finite values; keeping previous IR");
+            return;
+        }
+        let mut guard = self.ir_handle.lock().unwrap_or_else(|e| e.into_inner());
         *guard = ir;
     }
 
     /// Update the pump source parameters without restarting the stream.
     pub fn set_pump_params(&self, rpm: f64, num_valves: u32, duty_cycle: f64) {
-        let mut guard = self.pump_params.lock().unwrap();
+        let mut guard = self.pump_params.lock().unwrap_or_else(|e| e.into_inner());
         guard.rpm = rpm;
         guard.num_valves = num_valves;
         guard.duty_cycle = duty_cycle;
@@ -200,7 +205,7 @@ impl AudioPipeline {
 
     /// Set output volume (clamped to 0.0..=1.0).
     pub fn set_volume(&self, vol: f64) {
-        let mut guard = self.volume.lock().unwrap();
+        let mut guard = self.volume.lock().unwrap_or_else(|e| e.into_inner());
         *guard = vol.clamp(0.0, 1.0);
     }
 
@@ -254,7 +259,7 @@ impl AudioPipeline {
             // Point the engine's IR at the shared handle so hot-swaps are visible.
             engine.impulse_response = feeder_ir;
 
-            let params = feeder_pump.lock().unwrap().clone();
+            let params = feeder_pump.lock().unwrap_or_else(|e| e.into_inner()).clone();
             let mut pump = PumpSource::new(
                 params.rpm,
                 params.num_valves,
@@ -268,13 +273,13 @@ impl AudioPipeline {
             while feeder_running.load(Ordering::Relaxed) {
                 // Refresh pump parameters each block (cheap lock).
                 {
-                    let p = feeder_pump.lock().unwrap();
+                    let p = feeder_pump.lock().unwrap_or_else(|e| e.into_inner());
                     pump.set_params(p.rpm, p.num_valves, p.duty_cycle);
                 }
 
                 // Check ring buffer level; if already full enough, sleep briefly.
                 {
-                    let buf = feeder_ring.lock().unwrap();
+                    let buf = feeder_ring.lock().unwrap_or_else(|e| e.into_inner());
                     if buf.len() >= max_buffered {
                         drop(buf);
                         thread::sleep(std::time::Duration::from_millis(5));
@@ -288,7 +293,7 @@ impl AudioPipeline {
 
                 // Push into ring buffer.
                 {
-                    let mut buf = feeder_ring.lock().unwrap();
+                    let mut buf = feeder_ring.lock().unwrap_or_else(|e| e.into_inner());
                     for &s in &processed {
                         buf.push_back(s);
                     }
@@ -310,8 +315,8 @@ impl AudioPipeline {
                 .build_output_stream(
                     &config,
                     move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                        let vol = *cb_volume.lock().unwrap();
-                        let mut buf = cb_ring.lock().unwrap();
+                        let vol = *cb_volume.lock().unwrap_or_else(|e| e.into_inner());
+                        let mut buf = cb_ring.lock().unwrap_or_else(|e| e.into_inner());
                         for frame in data.chunks_mut(channels) {
                             let sample = buf.pop_front().unwrap_or(0.0) * vol;
                             let out = sample as f32;
@@ -328,8 +333,8 @@ impl AudioPipeline {
                 .build_output_stream(
                     &config,
                     move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
-                        let vol = *cb_volume.lock().unwrap();
-                        let mut buf = cb_ring.lock().unwrap();
+                        let vol = *cb_volume.lock().unwrap_or_else(|e| e.into_inner());
+                        let mut buf = cb_ring.lock().unwrap_or_else(|e| e.into_inner());
                         for frame in data.chunks_mut(channels) {
                             let sample = buf.pop_front().unwrap_or(0.0) * vol;
                             let out = (sample * i16::MAX as f64) as i16;
@@ -346,8 +351,8 @@ impl AudioPipeline {
                 .build_output_stream(
                     &config,
                     move |data: &mut [u16], _: &cpal::OutputCallbackInfo| {
-                        let vol = *cb_volume.lock().unwrap();
-                        let mut buf = cb_ring.lock().unwrap();
+                        let vol = *cb_volume.lock().unwrap_or_else(|e| e.into_inner());
+                        let mut buf = cb_ring.lock().unwrap_or_else(|e| e.into_inner());
                         for frame in data.chunks_mut(channels) {
                             let sample = buf.pop_front().unwrap_or(0.0) * vol;
                             let out =
@@ -361,7 +366,15 @@ impl AudioPipeline {
                     None,
                 )
                 .expect("Failed to build u16 output stream"),
-            _ => panic!("Unsupported sample format: {sample_format:?}"),
+            _ => {
+                eprintln!("Unsupported sample format: {sample_format:?}; audio will not play");
+                // Stop the feeder thread we just spawned since we can't play.
+                self.feeder_running.store(false, Ordering::Relaxed);
+                if let Some(handle) = self.feeder_handle.take() {
+                    let _ = handle.join();
+                }
+                return;
+            }
         };
 
         stream.play().expect("Failed to start cpal stream");
