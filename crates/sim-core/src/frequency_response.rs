@@ -184,4 +184,156 @@ mod tests {
             );
         }
     }
+
+    // -----------------------------------------------------------------------
+    // Test Group 2: Frequency sweep correctness
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_sweep_correct_bin_count() {
+        let (c, rho) = speed_of_sound_and_density(20.0);
+        let pipe_diameter = 6e-3;
+        let chamber_diameter = 40e-3;
+        let chamber_length = 80e-3;
+        let z_pipe = rho * c / area_from_diameter(pipe_diameter);
+        let chamber = StraightDuct::new(chamber_length, chamber_diameter);
+        let muffler = Muffler::new(vec![Box::new(chamber)], z_pipe, z_pipe);
+
+        let fft_size = 4096;
+        let sample_rate = 44100.0;
+        let expected_bins = fft_size / 2 + 1; // 2049
+
+        let (frequencies, tl, hf) = sweep(&muffler, fft_size, sample_rate, c, rho);
+
+        assert_eq!(
+            frequencies.len(),
+            expected_bins,
+            "frequencies should have fft_size/2 + 1 = {} bins, got {}",
+            expected_bins,
+            frequencies.len()
+        );
+        assert_eq!(
+            tl.len(),
+            expected_bins,
+            "tl should have {} bins, got {}",
+            expected_bins,
+            tl.len()
+        );
+        assert_eq!(
+            hf.len(),
+            expected_bins,
+            "hf should have {} bins, got {}",
+            expected_bins,
+            hf.len()
+        );
+    }
+
+    #[test]
+    fn test_sweep_dc_bin_is_unity() {
+        // DC bin should be exactly unity (1.0 + 0.0i) because at zero
+        // frequency the acoustic wavelength is infinite and the muffler
+        // has no effect.
+        let (c, rho) = speed_of_sound_and_density(20.0);
+        let pipe_diameter = 6e-3;
+        let chamber_diameter = 40e-3;
+        let chamber_length = 80e-3;
+        let z_pipe = rho * c / area_from_diameter(pipe_diameter);
+        let chamber = StraightDuct::new(chamber_length, chamber_diameter);
+        let muffler = Muffler::new(vec![Box::new(chamber)], z_pipe, z_pipe);
+
+        let fft_size = 4096;
+        let sample_rate = 44100.0;
+        let (_, _, hf) = sweep(&muffler, fft_size, sample_rate, c, rho);
+
+        // DC bin (index 0): sweep sets this to Complex64::new(1.0, 0.0)
+        let dc = hf[0];
+        assert!(
+            dc.im.abs() < 1e-15,
+            "DC bin imaginary part should be zero, got {}",
+            dc.im
+        );
+        assert!(
+            (dc.re - 1.0).abs() < 1e-15,
+            "DC bin real part should be 1.0, got {}",
+            dc.re
+        );
+    }
+
+    #[test]
+    fn test_sweep_frequency_bins_evenly_spaced() {
+        let (c, rho) = speed_of_sound_and_density(20.0);
+        let pipe_diameter = 6e-3;
+        let chamber_diameter = 40e-3;
+        let chamber_length = 80e-3;
+        let z_pipe = rho * c / area_from_diameter(pipe_diameter);
+        let chamber = StraightDuct::new(chamber_length, chamber_diameter);
+        let muffler = Muffler::new(vec![Box::new(chamber)], z_pipe, z_pipe);
+
+        let fft_size = 4096;
+        let sample_rate = 44100.0;
+        let (frequencies, _, _) = sweep(&muffler, fft_size, sample_rate, c, rho);
+
+        let expected_bin_width = sample_rate / fft_size as f64;
+
+        // Check first frequency is 0 (DC)
+        assert!(
+            frequencies[0].abs() < 1e-15,
+            "First frequency bin should be 0.0 Hz (DC), got {}",
+            frequencies[0]
+        );
+
+        // Check last frequency is Nyquist
+        let expected_nyquist = (fft_size / 2) as f64 * expected_bin_width;
+        assert!(
+            (frequencies.last().unwrap() - expected_nyquist).abs() < 1e-10,
+            "Last frequency bin should be Nyquist ({} Hz), got {}",
+            expected_nyquist,
+            frequencies.last().unwrap()
+        );
+
+        // Verify spacing between consecutive bins
+        for i in 1..frequencies.len() {
+            let spacing = frequencies[i] - frequencies[i - 1];
+            assert!(
+                (spacing - expected_bin_width).abs() < 1e-10,
+                "Bin spacing at index {} should be {}, got {}",
+                i,
+                expected_bin_width,
+                spacing
+            );
+        }
+    }
+
+    #[test]
+    fn test_sweep_all_tl_values_finite() {
+        let (c, rho) = speed_of_sound_and_density(20.0);
+        let pipe_diameter = 6e-3;
+        let chamber_diameter = 40e-3;
+        let chamber_length = 80e-3;
+        let z_pipe = rho * c / area_from_diameter(pipe_diameter);
+        let chamber = StraightDuct::new(chamber_length, chamber_diameter);
+        let muffler = Muffler::new(vec![Box::new(chamber)], z_pipe, z_pipe);
+
+        let fft_size = 4096;
+        let sample_rate = 44100.0;
+        let (_, tl, hf) = sweep(&muffler, fft_size, sample_rate, c, rho);
+
+        for (i, &tl_val) in tl.iter().enumerate() {
+            assert!(
+                tl_val.is_finite(),
+                "TL at bin {} must be finite, got {}",
+                i,
+                tl_val
+            );
+        }
+
+        for (i, &hf_val) in hf.iter().enumerate() {
+            assert!(
+                hf_val.norm().is_finite(),
+                "H(f) at bin {} must have finite magnitude, got {}",
+                i,
+                hf_val
+            );
+        }
+    }
 }

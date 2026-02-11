@@ -524,4 +524,102 @@ mod tests {
         assert_eq!(p.num_valves, 5);
         assert!((p.duty_cycle - 0.3).abs() < 1e-12);
     }
+
+    // -----------------------------------------------------------------------
+    // Test Group 3: Convolution engine edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_convolution_empty_input_returns_empty() {
+        let mut engine = ConvolutionEngine::new(8);
+        let input: Vec<f64> = vec![];
+        let output = engine.process(&input);
+        assert!(
+            output.is_empty(),
+            "Processing empty input should return empty output, got {} samples",
+            output.len()
+        );
+    }
+
+    #[test]
+    fn test_convolution_ir_hot_swap_mid_stream_no_panic() {
+        // Process several blocks, swapping the IR between them, ensuring
+        // no panics and output lengths remain consistent.
+        let mut engine = ConvolutionEngine::new(8);
+
+        // Block 1 with default delta IR
+        let block1 = vec![1.0; 8];
+        let out1 = engine.process(&block1);
+        assert_eq!(out1.len(), 8);
+
+        // Hot-swap to a longer IR
+        {
+            let mut ir = engine.impulse_response.lock().unwrap();
+            *ir = vec![0.25, 0.25, 0.25, 0.25];
+        }
+
+        // Block 2 after swap
+        let block2 = vec![1.0; 8];
+        let out2 = engine.process(&block2);
+        assert_eq!(out2.len(), 8);
+
+        // Hot-swap to a very short IR
+        {
+            let mut ir = engine.impulse_response.lock().unwrap();
+            *ir = vec![0.5];
+        }
+
+        // Block 3 after another swap
+        let block3 = vec![2.0; 8];
+        let out3 = engine.process(&block3);
+        assert_eq!(out3.len(), 8);
+
+        // Hot-swap to empty IR
+        {
+            let mut ir = engine.impulse_response.lock().unwrap();
+            *ir = vec![];
+        }
+
+        // Block 4 with empty IR
+        let block4 = vec![1.0; 8];
+        let out4 = engine.process(&block4);
+        assert_eq!(out4.len(), 8);
+        for &s in &out4 {
+            assert!(s.abs() < 1e-12, "Empty IR should produce silence");
+        }
+    }
+
+    #[test]
+    fn test_convolution_output_length_matches_input_per_block() {
+        // Verify that for various block sizes and IR lengths, the output
+        // always has exactly input.len() samples.
+        let block_sizes = [1, 4, 16, 64, 512];
+        let ir_lengths = [1, 2, 7, 32, 128];
+
+        for &bs in &block_sizes {
+            for &ir_len in &ir_lengths {
+                let mut engine = ConvolutionEngine::new(bs);
+                {
+                    let mut ir = engine.impulse_response.lock().unwrap();
+                    *ir = vec![1.0 / ir_len as f64; ir_len];
+                }
+
+                // Process multiple blocks
+                for block_num in 0..3 {
+                    let input = vec![1.0; bs];
+                    let output = engine.process(&input);
+                    assert_eq!(
+                        output.len(),
+                        bs,
+                        "Block {} with block_size={}, ir_len={}: output len {} != input len {}",
+                        block_num,
+                        bs,
+                        ir_len,
+                        output.len(),
+                        bs
+                    );
+                }
+            }
+        }
+    }
 }
