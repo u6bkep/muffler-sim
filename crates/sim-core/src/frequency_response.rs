@@ -229,10 +229,10 @@ mod tests {
     }
 
     #[test]
-    fn test_sweep_dc_and_nyquist_real() {
-        // DC and Nyquist bins should have zero imaginary part in hf,
-        // because the sweep function sets them to unity (DC) and computes
-        // a real-valued transfer function at Nyquist.
+    fn test_sweep_dc_bin_is_unity() {
+        // DC bin should be exactly unity (1.0 + 0.0i) because at zero
+        // frequency the acoustic wavelength is infinite and the muffler
+        // has no effect.
         let (c, rho) = speed_of_sound_and_density(20.0);
         let pipe_diameter = 6e-3;
         let chamber_diameter = 40e-3;

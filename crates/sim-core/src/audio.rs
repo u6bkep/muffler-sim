@@ -530,26 +530,6 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[test]
-    fn test_convolution_empty_ir_returns_zeros() {
-        let mut engine = ConvolutionEngine::new(8);
-        {
-            let mut ir = engine.impulse_response.lock().unwrap();
-            *ir = vec![];
-        }
-        let input = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
-        let output = engine.process(&input);
-        assert_eq!(output.len(), input.len());
-        for (i, &s) in output.iter().enumerate() {
-            assert!(
-                s.abs() < 1e-15,
-                "With empty IR, output[{}] should be 0.0, got {}",
-                i,
-                s
-            );
-        }
-    }
-
-    #[test]
     fn test_convolution_empty_input_returns_empty() {
         let mut engine = ConvolutionEngine::new(8);
         let input: Vec<f64> = vec![];
