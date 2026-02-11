@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "crates/sim-core",
+    "crates/sim-render",
+    "crates/air-sim",
+]
+resolver = "2"

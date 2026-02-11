@@ -1,0 +1,14 @@
+[package]
+name = "sim-render"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sim-core = { path = "../sim-core" }
+vulkano = "0.35"
+vulkano-shaders = "0.35"
+winit = "0.30"
+egui = "0.31"
+egui_winit_vulkano = "0.28"
+egui_plot = "0.31"
+bytemuck = { version = "1.14", features = ["derive"] }

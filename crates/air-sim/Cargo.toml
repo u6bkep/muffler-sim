@@ -1,0 +1,8 @@
+[package]
+name = "air-sim"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sim-core = { path = "../sim-core" }
+sim-render = { path = "../sim-render" }
