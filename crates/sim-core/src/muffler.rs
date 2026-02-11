@@ -12,6 +12,19 @@ pub struct Muffler {
 }
 
 impl Muffler {
+    /// Create a muffler from a custom list of elements and impedances.
+    pub fn new(
+        elements: Vec<Box<dyn AcousticElement>>,
+        z_source: f64,
+        z_load: f64,
+    ) -> Self {
+        Self {
+            elements,
+            z_source,
+            z_load,
+        }
+    }
+
     /// Build a single expansion chamber muffler from simulation parameters.
     pub fn from_params(params: &SimParams) -> Self {
         let inlet = StraightDuct::new(params.inlet_length, params.inlet_diameter);
