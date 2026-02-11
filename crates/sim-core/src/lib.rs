@@ -161,7 +161,7 @@ mod tests {
     #[test]
     fn test_default_params_produce_valid_results() {
         let params = SimParams::default();
-        let result = compute(&params);
+        let result = compute(&params).expect("default params should be valid");
 
         // Check that all output arrays have the expected sizes
         let expected_bins = 4096 / 2 + 1; // fft_size = 4096
@@ -200,8 +200,8 @@ mod tests {
         let mut params_large = SimParams::default();
         params_large.chamber_diameter = 80e-3; // 80 mm — larger expansion ratio
 
-        let result_small = compute(&params_small);
-        let result_large = compute(&params_large);
+        let result_small = compute(&params_small).expect("small params valid");
+        let result_large = compute(&params_large).expect("large params valid");
 
         // Compare TL at a non-DC, non-resonance frequency (pick bin 100)
         // Larger expansion ratio should produce higher TL in general
@@ -246,8 +246,8 @@ mod tests {
         let mut params_long = SimParams::default();
         params_long.chamber_length = 160e-3; // 160 mm
 
-        let result_short = compute(&params_short);
-        let result_long = compute(&params_long);
+        let result_short = compute(&params_short).expect("short params valid");
+        let result_long = compute(&params_long).expect("long params valid");
 
         // The TL pattern should differ — different resonance spacing.
         // Compare the full TL curves: they should not be identical.
@@ -296,7 +296,7 @@ mod tests {
             duty_cycle: 0.5,
             temperature: 20.0,
         };
-        let result = compute(&params);
+        let result = compute(&params).expect("tiny params valid");
 
         // All values should be finite
         for &tl in &result.transmission_loss {
@@ -321,7 +321,7 @@ mod tests {
             duty_cycle: 0.5,
             temperature: 20.0,
         };
-        let result = compute(&params);
+        let result = compute(&params).expect("large params valid");
 
         // All values should be finite
         for &tl in &result.transmission_loss {
