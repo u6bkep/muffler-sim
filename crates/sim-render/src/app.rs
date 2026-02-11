@@ -29,7 +29,7 @@ pub struct App {
 impl App {
     pub fn new() -> Self {
         let params = SimParams::default();
-        let result = sim_core::compute(&params);
+        let result = sim_core::compute(&params).expect("default params must be valid");
         let audio = AudioPipeline::new();
         // Pre-load the impulse response from the default params.
         audio.swap_ir(result.impulse_response.clone());
@@ -139,15 +139,23 @@ impl App {
 
         // Re-run simulation if any parameter changed.
         if changed.get() {
-            self.result = sim_core::compute(&self.params);
-            // Hot-swap impulse response into audio pipeline.
-            self.audio.swap_ir(self.result.impulse_response.clone());
-            // Update pump params in audio pipeline.
-            self.audio.set_pump_params(
-                self.params.rpm,
-                self.params.num_valves,
-                self.params.duty_cycle,
-            );
+            match sim_core::compute(&self.params) {
+                Ok(result) => {
+                    self.result = result;
+                    // Hot-swap impulse response into audio pipeline.
+                    self.audio.swap_ir(self.result.impulse_response.clone());
+                    // Update pump params in audio pipeline.
+                    self.audio.set_pump_params(
+                        self.params.rpm,
+                        self.params.num_valves,
+                        self.params.duty_cycle,
+                    );
+                }
+                Err(e) => {
+                    eprintln!("Simulation error: {e}");
+                    // Keep previous self.result; continue rendering the frame.
+                }
+            }
         }
 
         // Handle audio play/stop toggle.

@@ -79,9 +79,54 @@ pub trait AcousticElement: Send + Sync {
     fn transfer_matrix(&self, omega: f64, c: f64, rho: f64) -> transfer_matrix::TransferMatrix;
 }
 
+/// Validate simulation parameters, returning an error message if any are invalid.
+fn validate_params(params: &SimParams) -> Result<(), String> {
+    if params.inlet_diameter <= 0.0 {
+        return Err(format!("inlet_diameter must be > 0, got {}", params.inlet_diameter));
+    }
+    if params.chamber_diameter <= 0.0 {
+        return Err(format!("chamber_diameter must be > 0, got {}", params.chamber_diameter));
+    }
+    if params.outlet_diameter <= 0.0 {
+        return Err(format!("outlet_diameter must be > 0, got {}", params.outlet_diameter));
+    }
+    if params.inlet_length <= 0.0 {
+        return Err(format!("inlet_length must be > 0, got {}", params.inlet_length));
+    }
+    if params.chamber_length <= 0.0 {
+        return Err(format!("chamber_length must be > 0, got {}", params.chamber_length));
+    }
+    if params.outlet_length <= 0.0 {
+        return Err(format!("outlet_length must be > 0, got {}", params.outlet_length));
+    }
+    if params.duty_cycle <= 0.0 || params.duty_cycle >= 1.0 {
+        return Err(format!(
+            "duty_cycle must be in (0.0, 1.0) exclusive, got {}",
+            params.duty_cycle
+        ));
+    }
+    if params.rpm <= 0.0 {
+        return Err(format!("rpm must be > 0, got {}", params.rpm));
+    }
+    if params.num_valves == 0 {
+        return Err("num_valves must be > 0".to_string());
+    }
+    if params.temperature < -50.0 || params.temperature > 200.0 {
+        return Err(format!(
+            "temperature must be in [-50, 200] °C, got {}",
+            params.temperature
+        ));
+    }
+    Ok(())
+}
+
 /// Run the full simulation pipeline: build muffler from params, sweep
 /// frequency response, compute impulse response.
-pub fn compute(params: &SimParams) -> SimResult {
+///
+/// Returns an error if any parameter is out of valid range.
+pub fn compute(params: &SimParams) -> Result<SimResult, String> {
+    validate_params(params)?;
+
     let (c, rho) = constants::speed_of_sound_and_density(params.temperature);
 
     // Build element chain
@@ -96,13 +141,13 @@ pub fn compute(params: &SimParams) -> SimResult {
     // Compute impulse response
     let ir = impulse_response::compute(&transfer_fn, fft_size);
 
-    SimResult {
+    Ok(SimResult {
         frequencies,
         transmission_loss: tl,
         transfer_function: transfer_fn,
         impulse_response: ir,
         sample_rate,
-    }
+    })
 }
 
 #[cfg(test)]

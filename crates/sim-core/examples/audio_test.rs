@@ -20,7 +20,7 @@ fn main() {
     );
     println!("Computing impulse response...");
 
-    let result = sim_core::compute(&params);
+    let result = sim_core::compute(&params).expect("default params must be valid");
     println!(
         "IR length: {} samples, sample_rate: {} Hz",
         result.impulse_response.len(),
