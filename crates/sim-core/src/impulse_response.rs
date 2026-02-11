@@ -22,6 +22,13 @@ pub fn compute(transfer_function: &[Complex64], fft_size: usize) -> Vec<f64> {
         .iter()
         .map(|&c| realfft::num_complex::Complex { re: c.re, im: c.im })
         .collect();
+
+    // realfft requires DC and Nyquist bins to be purely real.
+    // Force imaginary parts to zero (use magnitude to preserve energy).
+    spectrum[0].im = 0.0;
+    let last = spectrum.len() - 1;
+    spectrum[last].im = 0.0;
+
     let mut output = vec![0.0f64; fft_size];
 
     ifft.process(&mut spectrum, &mut output)
