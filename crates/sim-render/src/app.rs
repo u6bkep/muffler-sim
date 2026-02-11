@@ -1,8 +1,9 @@
-// ApplicationHandler, event loop, state orchestration — Phase 3 implementation.
+// ApplicationHandler, event loop, state orchestration.
 
 use std::cell::Cell;
 
 use egui_winit_vulkano::{Gui, GuiConfig};
+use sim_core::audio::AudioPipeline;
 use sim_core::{SimParams, SimResult};
 use vulkano::sync::GpuFuture;
 use winit::{
@@ -20,18 +21,28 @@ pub struct App {
     params: SimParams,
     ui_state: UiState,
     result: SimResult,
+    audio: AudioPipeline,
+    /// Track previous audio toggle state to detect edges.
+    was_playing: bool,
 }
 
 impl App {
     pub fn new() -> Self {
         let params = SimParams::default();
         let result = sim_core::compute(&params);
+        let audio = AudioPipeline::new();
+        // Pre-load the impulse response from the default params.
+        audio.swap_ir(result.impulse_response.clone());
+        audio.set_pump_params(params.rpm, params.num_valves, params.duty_cycle);
+
         Self {
             renderer: None,
             gui: None,
             params,
             ui_state: UiState::default(),
             result,
+            audio,
+            was_playing: false,
         }
     }
 }
@@ -68,6 +79,7 @@ impl ApplicationHandler for App {
 
         match event {
             WindowEvent::CloseRequested => {
+                self.audio.stop();
                 event_loop.exit();
             }
             WindowEvent::Resized(_) => {
@@ -91,19 +103,16 @@ impl ApplicationHandler for App {
 
 impl App {
     fn render_frame(&mut self) {
-        // Early return if renderer or gui not initialized.
         if self.renderer.is_none() || self.gui.is_none() {
             return;
         }
 
-        // Acquire the next swapchain image.
         let acquire = self.renderer.as_mut().unwrap().begin_frame();
         let (image_index, acquire_future) = match acquire {
             Some(r) => r,
             None => return,
         };
 
-        // Join the acquire future with the previous frame end.
         let before_future = self
             .renderer
             .as_mut()
@@ -112,7 +121,6 @@ impl App {
             .join(acquire_future);
 
         // Run the egui immediate-mode UI.
-        // Use Cell to propagate the "changed" flag out of the closure.
         let changed = Cell::new(false);
         {
             let gui = self.gui.as_mut().unwrap();
@@ -132,10 +140,29 @@ impl App {
         // Re-run simulation if any parameter changed.
         if changed.get() {
             self.result = sim_core::compute(&self.params);
+            // Hot-swap impulse response into audio pipeline.
+            self.audio.swap_ir(self.result.impulse_response.clone());
+            // Update pump params in audio pipeline.
+            self.audio.set_pump_params(
+                self.params.rpm,
+                self.params.num_valves,
+                self.params.duty_cycle,
+            );
+        }
+
+        // Handle audio play/stop toggle.
+        self.audio.set_volume(self.ui_state.volume as f64);
+        if self.ui_state.play_audio && !self.was_playing {
+            self.audio.play();
+            self.was_playing = true;
+        } else if !self.ui_state.play_audio && self.was_playing {
+            self.audio.stop();
+            self.was_playing = false;
         }
 
         // Draw egui onto the swapchain image.
-        let image_view = self.renderer.as_ref().unwrap().image_views[image_index as usize].clone();
+        let image_view =
+            self.renderer.as_ref().unwrap().image_views[image_index as usize].clone();
         let after_future = self
             .gui
             .as_mut()
