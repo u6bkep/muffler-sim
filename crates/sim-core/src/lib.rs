@@ -108,6 +108,9 @@ fn validate_params(params: &SimParams) -> Result<(), String> {
     if params.rpm <= 0.0 {
         return Err(format!("rpm must be > 0, got {}", params.rpm));
     }
+    if params.num_valves == 0 {
+        return Err("num_valves must be > 0".to_string());
+    }
     if params.temperature < -50.0 || params.temperature > 200.0 {
         return Err(format!(
             "temperature must be in [-50, 200] °C, got {}",

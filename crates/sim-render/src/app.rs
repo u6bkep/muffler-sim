@@ -142,20 +142,20 @@ impl App {
             match sim_core::compute(&self.params) {
                 Ok(result) => {
                     self.result = result;
+                    // Hot-swap impulse response into audio pipeline.
+                    self.audio.swap_ir(self.result.impulse_response.clone());
+                    // Update pump params in audio pipeline.
+                    self.audio.set_pump_params(
+                        self.params.rpm,
+                        self.params.num_valves,
+                        self.params.duty_cycle,
+                    );
                 }
                 Err(e) => {
                     eprintln!("Simulation error: {e}");
-                    return;
+                    // Keep previous self.result; continue rendering the frame.
                 }
             }
-            // Hot-swap impulse response into audio pipeline.
-            self.audio.swap_ir(self.result.impulse_response.clone());
-            // Update pump params in audio pipeline.
-            self.audio.set_pump_params(
-                self.params.rpm,
-                self.params.num_valves,
-                self.params.duty_cycle,
-            );
         }
 
         // Handle audio play/stop toggle.
