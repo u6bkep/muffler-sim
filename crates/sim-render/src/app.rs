@@ -29,7 +29,7 @@ pub struct App {
 impl App {
     pub fn new() -> Self {
         let params = SimParams::default();
-        let result = sim_core::compute(&params);
+        let result = sim_core::compute(&params).expect("default params must be valid");
         let audio = AudioPipeline::new();
         // Pre-load the impulse response from the default params.
         audio.swap_ir(result.impulse_response.clone());
@@ -139,7 +139,15 @@ impl App {
 
         // Re-run simulation if any parameter changed.
         if changed.get() {
-            self.result = sim_core::compute(&self.params);
+            match sim_core::compute(&self.params) {
+                Ok(result) => {
+                    self.result = result;
+                }
+                Err(e) => {
+                    eprintln!("Simulation error: {e}");
+                    return;
+                }
+            }
             // Hot-swap impulse response into audio pipeline.
             self.audio.swap_ir(self.result.impulse_response.clone());
             // Update pump params in audio pipeline.

@@ -46,7 +46,8 @@ impl TransferMatrix {
         let zs = Complex64::new(z_source, 0.0);
         let zl = Complex64::new(z_load, 0.0);
         let numerator = self.a + self.b / zl + zs * self.c + zs * self.d / zl;
-        20.0 * (numerator.norm() / 2.0).log10()
+        let magnitude = (numerator.norm() / 2.0).max(1e-16);
+        20.0 * magnitude.log10()
     }
 
     /// Complex pressure transfer function H(f).
@@ -56,6 +57,9 @@ impl TransferMatrix {
         let zs = Complex64::new(z_source, 0.0);
         let zl = Complex64::new(z_load, 0.0);
         let denom = self.a + self.b / zl + zs * self.c + zs * self.d / zl;
+        if denom.norm() < 1e-15 {
+            return Complex64::new(0.0, 0.0);
+        }
         Complex64::new(2.0, 0.0) / denom
     }
 }

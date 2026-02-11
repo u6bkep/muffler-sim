@@ -26,8 +26,10 @@ pub fn sweep(
 
         frequencies.push(freq);
 
-        if freq < 1.0 {
-            // DC bin: no attenuation, unity transfer
+        if freq == 0.0 {
+            // DC bin (bin 0): no attenuation, unity transfer.
+            // At DC the acoustic wavelength is infinite, so the muffler
+            // has no effect and the transfer function is unity.
             tl.push(0.0);
             hf.push(Complex64::new(1.0, 0.0));
         } else {
