@@ -6,10 +6,11 @@ use vulkano::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
         QueueCreateInfo, QueueFlags,
     },
+    format::NumericFormat,
     image::{view::ImageView, Image, ImageUsage},
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     swapchain::{
-        self, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
+        self, PresentMode, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
     },
     sync::{self, GpuFuture},
     Validated, VulkanError, VulkanLibrary,
@@ -115,9 +116,15 @@ impl Renderer {
         let surface_capabilities = physical_device
             .surface_capabilities(&surface, Default::default())
             .expect("failed to query surface capabilities");
-        let image_format = physical_device
+        let surface_formats = physical_device
             .surface_formats(&surface, Default::default())
-            .expect("failed to query surface formats")[0]
+            .expect("failed to query surface formats");
+        // Prefer a UNORM format — egui_winit_vulkano blends assuming linear
+        // colour values, so an sRGB render target causes double-gamma artefacts.
+        let image_format = surface_formats
+            .iter()
+            .find(|(f, _)| f.numeric_format_color() == Some(NumericFormat::UNORM))
+            .unwrap_or(&surface_formats[0])
             .0;
         let window_size = window.inner_size();
         let (swapchain, images) = Swapchain::new(
@@ -127,12 +134,13 @@ impl Renderer {
                 min_image_count: surface_capabilities.min_image_count.max(2),
                 image_format,
                 image_extent: [window_size.width, window_size.height],
-                image_usage: ImageUsage::COLOR_ATTACHMENT,
+                image_usage: ImageUsage::COLOR_ATTACHMENT | ImageUsage::TRANSFER_DST,
                 composite_alpha: surface_capabilities
                     .supported_composite_alpha
                     .into_iter()
                     .next()
                     .expect("no composite alpha mode"),
+                present_mode: PresentMode::Fifo,
                 ..Default::default()
             },
         )

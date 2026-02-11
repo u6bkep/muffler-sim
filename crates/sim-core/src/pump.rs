@@ -63,6 +63,14 @@ impl PumpSource {
             }
         }
 
+        // Remove DC bias so the full signal energy is in the RPM-dependent
+        // AC component. Without this, overlapping valve pulses create a
+        // near-constant waveform where RPM changes are inaudible.
+        let mean = output.iter().sum::<f64>() / output.len() as f64;
+        for s in &mut output {
+            *s -= mean;
+        }
+
         output
     }
 }
@@ -82,8 +90,7 @@ mod tests {
         let mut pump = PumpSource::new(3000.0, 3, 0.5, 44100.0);
         let samples = pump.generate(44100);
         for &s in &samples {
-            assert!(s >= 0.0, "Pump output should be non-negative");
-            assert!(s <= 3.1, "Pump output too large: {s}"); // max ~ num_valves
+            assert!(s.abs() <= 3.1, "Pump output magnitude too large: {s}");
         }
     }
 
@@ -185,15 +192,8 @@ mod tests {
             let max_val = samples.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
             let min_val = samples.iter().cloned().fold(f64::INFINITY, f64::min);
 
-            assert!(
-                min_val >= 0.0,
-                "Pump output should be non-negative (rpm={}, valves={}, dc={}): min={}",
-                rpm,
-                num_valves,
-                duty_cycle,
-                min_val
-            );
-            // Maximum possible amplitude is num_valves (when all valves peak simultaneously)
+            // After DC removal, signal can go negative, so check absolute bound.
+            // Maximum possible amplitude is num_valves (when all valves peak simultaneously).
             let upper_bound = num_valves as f64 + 0.1;
             assert!(
                 max_val <= upper_bound,
@@ -205,5 +205,13 @@ mod tests {
                 upper_bound
             );
         }
+    }
+
+    #[test]
+    fn test_output_zero_mean() {
+        let mut pump = PumpSource::new(3000.0, 3, 0.5, 44100.0);
+        let samples = pump.generate(44100);
+        let mean = samples.iter().sum::<f64>() / samples.len() as f64;
+        assert!(mean.abs() < 1e-6, "Pump output should be zero-mean, got {mean}");
     }
 }

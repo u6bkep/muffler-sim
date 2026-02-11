@@ -40,11 +40,20 @@ pub fn compute(transfer_function: &[Complex64], fft_size: usize) -> Vec<f64> {
         *s *= norm;
     }
 
-    // Apply Hann window and truncate to fft_size/2
+    // Truncate to fft_size/2 and apply a right-side cosine taper.
+    // A full Hann window zeros out sample 0, destroying the direct-path
+    // energy. Instead, keep early samples intact and taper the last 25%
+    // to avoid truncation artefacts.
     let ir_len = fft_size / 2;
+    let taper_len = ir_len / 4;
     let mut ir = Vec::with_capacity(ir_len);
     for i in 0..ir_len {
-        let window = 0.5 * (1.0 - (2.0 * PI * i as f64 / ir_len as f64).cos());
+        let window = if i >= ir_len - taper_len {
+            let t = (i - (ir_len - taper_len)) as f64 / taper_len as f64;
+            0.5 * (1.0 + (PI * t).cos())
+        } else {
+            1.0
+        };
         ir.push(output[i] * window);
     }
 

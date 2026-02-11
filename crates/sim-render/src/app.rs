@@ -57,13 +57,16 @@ impl ApplicationHandler for App {
             renderer.queue.clone(),
             renderer.swapchain_format(),
             GuiConfig {
-                is_overlay: true,
+                is_overlay: false,
                 ..Default::default()
             },
         );
 
         self.renderer = Some(renderer);
         self.gui = Some(gui);
+
+        // Request the very first frame.
+        self.renderer.as_ref().unwrap().window.request_redraw();
     }
 
     fn window_event(
@@ -74,7 +77,7 @@ impl ApplicationHandler for App {
     ) {
         // Let egui process the event first.
         if let Some(gui) = self.gui.as_mut() {
-            let _consumed = gui.update(&event);
+            gui.update(&event);
         }
 
         match event {
@@ -89,15 +92,20 @@ impl ApplicationHandler for App {
             }
             WindowEvent::RedrawRequested => {
                 self.render_frame();
+                return; // already rendering — no need to request another redraw
             }
             _ => {}
+        }
+
+        // Any input / resize event means egui state may have changed — repaint.
+        if let Some(renderer) = self.renderer.as_ref() {
+            renderer.window.request_redraw();
         }
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        if let Some(renderer) = self.renderer.as_ref() {
-            renderer.window.request_redraw();
-        }
+        // Intentionally empty — only repaint in response to window events so
+        // the event loop sleeps when idle instead of busy-looping at 100 % CPU.
     }
 }
 
@@ -148,6 +156,11 @@ impl App {
                         self.params.num_valves,
                         self.params.duty_cycle,
                     );
+                    // The plot was drawn with the old result; schedule one more frame
+                    // so the updated TL curve is shown without waiting for user input.
+                    if let Some(r) = self.renderer.as_ref() {
+                        r.window.request_redraw();
+                    }
                 }
                 Err(e) => {
                     eprintln!("Simulation error: {e}");
